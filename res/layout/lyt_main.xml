@@ -2,8 +2,8 @@
     xmlns:tools="http://schemas.android.com/tools"
     android:id="@+id/mainScrollView1"
     android:layout_width="match_parent"
-    android:layout_height="match_parent">
-    <!-- android:background="@drawable/unnamed"> -->
+    android:layout_height="match_parent"
+    android:background="@drawable/simplenavy2">
 
     <LinearLayout
         android:id="@+id/mainLayout"
@@ -25,7 +25,7 @@
             android:layout_marginTop="20dp"
             android:text="@string/maindescription"
             android:textSize="13sp"
-            android:background="#ffffff" >
+            android:textColor="#ffffff" >
         </TextView>
         
         <Button
@@ -34,8 +34,8 @@
             android:layout_height="wrap_content"
             android:layout_gravity="center"
             android:text="@string/action_scan"
-            android:textColor="#660033"
-            android:textSize="12sp"
+            android:textColor="#ffffff"
+            android:textSize="14sp"
             android:textStyle="bold" />
         
         <Button
@@ -44,8 +44,8 @@
             android:layout_height="wrap_content"
             android:layout_gravity="center"
             android:text="@string/action_exit"
-            android:textColor="#660033"
-            android:textSize="12sp"
+            android:textColor="#ffffff"
+            android:textSize="14sp"
             android:textStyle="bold" />
 
         </LinearLayout>
