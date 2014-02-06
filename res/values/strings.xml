@@ -4,12 +4,15 @@
     <string name="app_name">TestAppTwo</string>
     <string name="action_settings">Settings</string>
     <string name="action_scan">Scan</string>
+    <string name="action_submit">Submit</string>
     <string name="action_exit">Exit Application</string>
     <string name="maindescription">Main Objectives: \n\n The application should simply scan the barcode of a product and return some basic information about it from the sybase database (Proper.db).\n\n</string>
     <string name="maintitle">Main Tasks</string>
     <string name="barcode_name">Barcode Scan</string>
     <string name="but_start">Start Scan</string>
     <string name="but_stop">Stop Scan</string>
+    <string name="but_ok">OK</string>
+    <string name="but_cancel">Cancel</string>
     <string name="but_close">Close</string>
     <string name="title_activity_act_details">Details</string>
     <string name="hello_world">Hello world!</string>
@@ -19,7 +22,9 @@
     <string name="img_album">Album Art</string>
     <string name="defaultLabelText">Empty TextView</string>
     <string name="defaultLabelTextLorem">Lorem ipsum dolor sit amet, consectetur adipisicing elit, sed do eiusmod tempor incididunt ut labore et dolore magna aliqua.</string>
+    <string name="alert_exploded">For some reason this code has exploded please alert your IT staff</string>
     <string name="image_description">shows image of the barcode</string>
+    <string name="hint_entername">Enter Name Here</string>
     
     <string name="DEV_OPEN_ERR">Device open failed！Software will quit！</string>
     <string name="DIA_ALERT">Warning！</string>
