@@ -939,7 +939,7 @@ public class ActMain extends Activity {
     			// **************************	BEGIN	tryDownloadingData	************************************
     			//String serviceUrl = "http://192.168.0.100:8080/warehouse.support/api/v1/product";
     			//String serviceUrl = "http://192.168.10.248:9080/com.lebel.restsample/api/v1/product";
-    			String serviceUrl = "http://192.168.10.248:9080/cwarehouse.support/api/v1/product";
+    			String serviceUrl = "http://192.168.10.248:9080/warehouse.support/api/v1/product";
     			final String thisLogTag = "tryDownloadingData";
     			
     			switch (thisAction) {
