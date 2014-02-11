@@ -1,12 +1,17 @@
 package com.proper.testapptwo;
 
+import java.io.BufferedReader;
 import java.io.IOException;
+import java.io.InputStream;
+import java.io.InputStreamReader;
+import java.io.OutputStream;
+import java.net.HttpURLConnection;
+import java.net.MalformedURLException;
+import java.net.URL;
 
 import org.codehaus.jackson.JsonGenerationException;
 import org.codehaus.jackson.map.JsonMappingException;
 import org.codehaus.jackson.map.ObjectMapper;
-
-import javax.ws.rs.core.MediaType;
 
 import com.google.zxing.BarcodeFormat;
 import com.google.zxing.WriterException;
@@ -15,9 +20,6 @@ import com.google.zxing.oned.Code128Writer;
 import com.proper.testapptwo.R;
 import com.proper.testapptwo.data.Product;
 import com.proper.testapptwo.data.ScanTest;
-import com.sun.jersey.api.client.Client;
-import com.sun.jersey.api.client.ClientResponse;
-import com.sun.jersey.api.client.WebResource;
 
 import android.os.AsyncTask;
 import android.os.Bundle;
@@ -39,9 +41,11 @@ import android.widget.ImageView;
 import android.widget.TextView;
 
 public class ActDetails extends Activity {
+	private ImageView mImageView;
 	private Bitmap mBitmap = null;
 	private long timeElapsed;
 	private EditText txtScanBy;
+	private Button btnSubmit;
 	private ScanTest currentItem;
 	private static final int MSG_BCODE_STARTING = 22;
 	private static final int MSG_DONE = 11;
@@ -49,6 +53,7 @@ public class ActDetails extends Activity {
 	protected ProgressDialog bcDialog;
 	private boolean hasBcRan = false;
 	private int bcRunCount = 0;
+	private ScanTest recentlySavedScan = null;
 	//private boolean qryResult = false;
 	
 	@Override
@@ -56,7 +61,8 @@ public class ActDetails extends Activity {
 		super.onCreate(savedInstanceState);
 		setContentView(R.layout.lyt_details);
 		txtScanBy = (EditText) findViewById(R.id.etxtScanBy);
-		Button btnSubmit = (Button) findViewById(R.id.btnSubmit);
+		mImageView = (ImageView) findViewById(R.id.imgBarcode);
+		btnSubmit = (Button) findViewById(R.id.btnSubmit);
 		btnSubmit.setOnClickListener(new View.OnClickListener() {
 			
 			@Override
@@ -114,38 +120,63 @@ public class ActDetails extends Activity {
 			                   }
 			               });
 			        builder.show();
-			               /*.setNegativeButton(R.string.but_cancel, new DialogInterface.OnClickListener() {
-			                   public void onClick(DialogInterface dialog, int id) {
-			                       // User cancelled the dialog
-			                   }
-			               });
-			        Log.d("Unexplicable Error", "For some reason this code has exploded please alert your IT staff");
-					Toast.makeText(this, "For some reason this code has exploded please alert your IT staff", Toast.LENGTH_LONG);*/
 		}
 	}
 	
-	private void QueryDb() {
-		//currentItem.setTestDoneBy(name);
-		//String serviceUrl = "http://192.168.10.248:9080/com.lebel.restsample/api/v1/scans/postscan";
-		String serviceUrl = "http://192.168.10.14:8080/com.lebel.restsample/api/v1/scans/postscan";
+	private ScanTest QueryDb() {
+		ScanTest scanPersisted = null;
+		//String _uri = "http://192.168.10.2:8080/com.lebel.restsample/api/v1/scans/postscan"; //***
+		String _uri = "http://192.168.10.248:9080/warehouse.support/api/v1/scans/postscan";	//***
 		try {
-			Client client = Client.create();
-			WebResource webResource = client.resource(serviceUrl);
+			URL serviceUrl = new URL(_uri);
+			HttpURLConnection conn = (HttpURLConnection) serviceUrl.openConnection();
+			conn.setDoOutput(true);
+			conn.setRequestMethod("POST");
+			conn.setRequestProperty("Content-Type", "application/json");
+
 			ObjectMapper mapper = new ObjectMapper();
 			String input = mapper.writeValueAsString(currentItem);
-			//ClientResponse response = webResource.type("application/json").post(ClientResponse.class, input);
-			//Thread.currentThread().setContextClassLoader(this.getClass().getClassLoader()); //fix
-			ClientResponse response = webResource.type(MediaType.APPLICATION_JSON.toString()).post(ClientResponse.class, input);
-			if (response.getStatus() != 201) {
+
+			OutputStream os = conn.getOutputStream();
+			os.write(input.getBytes());
+			os.flush();
+
+			if (conn.getResponseCode() != HttpURLConnection.HTTP_CREATED) {
 				throw new RuntimeException("Failed : HTTP error code : "
-				     + response.getStatus());
+						+ conn.getResponseCode());
 			}
-	 
-			//System.out.println("Output from Server .... \n");
-			//String output = response.getEntity(String.class);
-			//System.out.println(output);
-		}
-		catch (JsonGenerationException e) {
+			InputStream stream = conn.getInputStream();
+			final InputStream streamCopy = stream;
+			InputStreamReader isReader = new InputStreamReader(stream ); 
+
+			//put output stream into a pojo
+			scanPersisted = mapper.readValue(streamCopy, ScanTest.class);
+			
+			//put output stream into a string
+			//BufferedReader br = new BufferedReader(isReader );
+			//final StringBuilder sb  = new StringBuilder();
+			//String result = "";
+			//while ((result = br.readLine()) != null) {
+			//	sb.append(result);
+			//}
+			
+			if (scanPersisted.getProductId() > 0) {
+				String mMsg = String.format("ProductID created is %s", scanPersisted.getProductId());
+				AlertDialog.Builder builder = new AlertDialog.Builder(this);
+		        builder.setMessage(mMsg)
+		               .setPositiveButton(R.string.but_ok, new DialogInterface.OnClickListener() {
+		                   public void onClick(DialogInterface dialog, int id) {
+		                       // ZO SOMETHING!
+		                   }
+		               });
+		        builder.show();
+			}
+			//br.close();
+			conn.disconnect();
+			
+		} catch (MalformedURLException e) {
+			e.printStackTrace();
+		} catch (JsonGenerationException e) {
 			e.printStackTrace();
 		} catch (JsonMappingException e) {
 			e.printStackTrace();
@@ -154,6 +185,7 @@ public class ActDetails extends Activity {
 		} catch (Exception ex) {
 			ex.printStackTrace();
 		}
+		return scanPersisted;
 	}
 
 	private void populateUiControls(Bundle form) {
@@ -209,7 +241,15 @@ public class ActDetails extends Activity {
 
 					@Override
 					public void run() {
-						generateBarCode(bcode);
+						//generateBarCode(bcode);
+						mImageView.post(new Runnable() {
+
+							@Override
+							public void run() {
+								generateBarCode(bcode);
+							}
+							
+						});
 					}
 					
 				};
@@ -219,8 +259,8 @@ public class ActDetails extends Activity {
 			}
 		}
 		else {
-			ImageView barcodeImage = (ImageView) findViewById(R.id.imgBarcode);
-			barcodeImage.setImageResource(R.drawable.barcode_ean13);
+			//ImageView barcodeImage = (ImageView) findViewById(R.id.imgBarcode);
+			mImageView.setImageResource(R.drawable.barcode_ean13);
 		}
 		hasBcRan = false;
 		bcRunCount = 0;
@@ -240,7 +280,6 @@ public class ActDetails extends Activity {
 			com.google.zxing.Writer c9 = new Code128Writer();
 		    try {
 		        BitMatrix bm = c9.encode(data,BarcodeFormat.CODE_128,380, 168);
-		    	//BitMatrix bm = c9.encode(data,BarcodeFormat.EAN_13,380, 168);
 		        mBitmap = Bitmap.createBitmap(380, 168, Config.ARGB_8888);
 
 		        for (int i = 0; i < 380; i++) {
@@ -253,7 +292,6 @@ public class ActDetails extends Activity {
 		        e.printStackTrace();
 		    }
 		    if (mBitmap != null) {
-		    	ImageView mImageView = (ImageView) findViewById(R.id.imgBarcode);
 		    	mImageView.setImageBitmap(mBitmap);
 		    }
 		    
@@ -261,17 +299,31 @@ public class ActDetails extends Activity {
 	    }
 	}
 	
-	private class wserverPost extends AsyncTask<ScanTest, Integer, Boolean> {
+	private class wserverPost extends AsyncTask<ScanTest, Integer, ScanTest> {
 		protected ProgressDialog mDialog;
 		@Override
-		protected Boolean doInBackground(ScanTest... params) {
-			QueryDb();
-			return true;
+		protected ScanTest doInBackground(ScanTest... params) {
+			Thread.currentThread().setName("QueryDb-wsPost");
+			ScanTest ret = QueryDb();
+			return ret;
 		}
 
 		@Override
-		protected void onPostExecute(Boolean result) {
+		protected void onPostExecute(ScanTest result) {
 			if (mDialog != null && mDialog.isShowing() == true) {mDialog.dismiss();}
+			if (result.getProductId() > 0) {
+				String mMsg = String.format("ProductID created is:  %s", result.getProductId());
+				AlertDialog.Builder builder = new AlertDialog.Builder(ActDetails.this);
+		        builder.setMessage(mMsg)
+		               .setPositiveButton(R.string.but_ok, new DialogInterface.OnClickListener() {
+		                   public void onClick(DialogInterface dialog, int id) {
+		                       // ZO SOMETHING!
+		                	   txtScanBy.setText("");
+		                	   if (btnSubmit.isEnabled()) btnSubmit.setEnabled(false);
+		                   }
+		               });
+		        builder.show();
+			}
 		}
 
 		@Override
@@ -292,8 +344,18 @@ public class ActDetails extends Activity {
 	@Override
 	public void onBackPressed() {
 		super.onBackPressed();
-		this.startActivity(new Intent(ActDetails.this,com.android.barcode.ActMain.class));
-		this.finish();
+		////android.os.Process.killProcess(android.os.Process.myPid());
+		////com.android.barcode.ActMain.this.onDestroy();
+		//com.android.barcode.ActMain.killApp(true);
+		//Intent i = new Intent(this, com.android.barcode.ActMain.class);
+		
+		Intent resultIntent = new Intent();
+		//resultIntent.setFlags(Intent.FLAG_ACTIVITY_CLEAR_TOP | Intent.FLAG_ACTIVITY_SINGLE_TOP);
+		setResult(0, resultIntent);
+		finish();
+		
+		////this.startActivity(new Intent(ActDetails.this,com.android.barcode.ActMain.class));
+		////this.finish();
 	}
 
 	@Override

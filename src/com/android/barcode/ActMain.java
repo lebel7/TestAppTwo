@@ -12,6 +12,7 @@ import java.io.UnsupportedEncodingException;
 import java.net.URL;
 import java.net.URLConnection;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.List;
 import java.util.Timer;
 import java.util.TimerTask;
@@ -50,6 +51,7 @@ import android.content.DialogInterface;
 import android.content.Intent;
 import android.media.AudioManager;
 import android.media.SoundPool;
+import android.os.AsyncTask;
 import android.os.Bundle;
 import android.os.Handler;
 import android.os.Message;
@@ -80,6 +82,7 @@ public class ActMain extends Activity {
 	private SerialPort mSerialPort;
 	private String buff = new String();
 	public int fd;
+	private WebServiceTask wsTask;
 	private ReadThread mReadThread;
 	protected ProgressDialog wsDialog;
 	private Button close;
@@ -104,6 +107,7 @@ public class ActMain extends Activity {
 	int wsLineNumber = 0;
 	String actionString[];
 	private boolean hasWsRan = false;
+	private boolean hasWsInterrupted = false;
 	private int wsRunCount = 0;
 	private long startTime;
 	
@@ -217,7 +221,12 @@ public class ActMain extends Activity {
 	                super.handleMessage(msg);
 	                if(msg.what == 1 && key_start == false){
 	                    //mReception.append(buff);
-	                    mReception.setText(buff);
+	                	if (!mReception.getText().toString().equalsIgnoreCase("")) {
+	                		mReception.setText("");
+	                	}
+	                	else{
+	                		mReception.setText(buff);
+	                	}
 	                    soundPool.play(soundId, 1, 1, 0, 0, 1);
             			key_start = true;
            				scan.setEnabled(true);
@@ -379,9 +388,24 @@ public class ActMain extends Activity {
     		}
     	}
 		super.onDestroy();
+		android.os.Process.killProcess(android.os.Process.myPid());
 	}
     
-    private void QueryWebService(String[] inputParam) {
+    @Override
+	protected void onActivityResult(int requestCode, int resultCode, Intent data) {
+		super.onActivityResult(requestCode, resultCode, data);
+		if (resultCode == 0) {
+			//Intent i = new Intent(this, com.android.barcode.ActMain.class);
+			//i.setFlags(Intent.FLAG_ACTIVITY_CLEAR_TOP | Intent.FLAG_ACTIVITY_SINGLE_TOP);
+			//startActivity(i);
+			mReception.setText("");  //clear the textbox
+			if (wsTask != null && wsTask.getStatus().equals(AsyncTask.Status.RUNNING)) {
+				wsTask.cancel(true);
+			}
+		}
+	}
+
+	private void QueryWebService(String[] inputParam) {
     	if (hasWsRan == false) {
     		wsHandler.obtainMessage(MSG_QUERY_STARTING).sendToTarget();
         	if (wsRunCount == 0) {wsRunCount ++;}
@@ -398,17 +422,20 @@ public class ActMain extends Activity {
     			
     			// **************************	BEGIN	tryDownloadingData	************************************
     			//String serviceUrl = "http://pmdtestserver:9080/com.lebel.restsample/api/v1/product";
-    			String serviceUrl = "http://192.168.10.248:9080/com.lebel.restsample/api/v1/product";
-    			//String serviceUrl = "http://192.168.0.103:8080/com.lebel.restsample/api/v1/product";
+    			//String serviceUrl = "http://192.168.10.248:9080/com.lebel.restsample/api/v1/product";
+    			//String serviceUrl = "http://192.168.0.5:8080/com.lebel.restsample/api/v1/product";
+    			String serviceUrl = "http://192.168.0.105:8080/warehouse.support/api/v1/product";
     			final String thisLogTag = "tryDownloadingData";
     			
     			switch (thisAction) {
     			case 3:
     				//serviceUrl += "/getProductByIdInXML/" + thisParam;
-    				serviceUrl = serviceUrl + "/getProductByIdInXML/" + thisParam;
+    				//serviceUrl = serviceUrl + "/getProductByIdInXML/" + thisParam;
+    				serviceUrl = serviceUrl + "/getproductbybarcodeinxml/" + thisParam;
     				break;
     			case 2:
-    				serviceUrl += "/gettop20InXML";
+    				//serviceUrl += "/gettop20InXML";
+    				serviceUrl += "/gettop20inxml";
     				break;
     			}
     			
@@ -545,89 +572,119 @@ public class ActMain extends Activity {
 
 		@Override
 		public void afterTextChanged(Editable s) {
-			String[] lines = s.toString().split("\n");
-			//String barcode = lines[lines.length - 1];
-			String barcode = lines[0];
-			if (barcode.trim().length() > 0 && barcode.trim().length() > 8) {
-				
-				// Navigate to the next screen and initiate a query based on scan data
-				actionString = new String[] {String.format("%s", ACTION_GETSINGLEPRODUCT), barcode};
-				
-				Runnable runnable = new Runnable() {
+			int one = 1;
+			if (one < 0) {
+				// go with Runnable + Handler + Thread task option
+				if (hasWsInterrupted == true) { hasWsInterrupted = false; }
+				if (s != null && !s.toString().equalsIgnoreCase("")) {
+					int acceptable[] = {8,12,13,14};
+					String eanCode = s.toString().trim();
+					if (eanCode.length() > 0 && !(Arrays.binarySearch(acceptable, eanCode.length()) == -1)) {
+						//String[] lines = s.toString().split("\n");
+						////String barcode = lines[lines.length - 1];
+						//String barcode = lines[0];
+					
+						
+						// Navigate to the next screen and initiate a query based on scanned data
+						//actionString = new String[] {String.format("%s", ACTION_GETSINGLEPRODUCT), barcode};
+						actionString = new String[] {String.format("%s", ACTION_GETSINGLEPRODUCT), eanCode};
+						
+						Runnable runnable = new Runnable() {
 
-					@Override
-					public void run() {
-						if (actionString != null) {
-							QueryWebService(actionString);
+							@Override
+							public void run() {
+								if (actionString != null && hasWsRan == false) {
+									QueryWebService(actionString);
+								}
+								else {
+									Log.d("afterTextChanged - Runnable", "actionString appears to be null");
+								}
+							}	
+						};
+						Thread wsThread = new Thread(runnable);
+						//if (wsThread.isAlive() == false) {
+							if (hasWsRan == false && wsRunCount == 0) {
+								wsThread.setName("wsThread");
+								wsThread.start();
+								wsRunCount ++;
+							}
+							
+						//}
+						
+						//scanSuccess = false; //reset for the next scan
+						if(wsDialog != null && wsDialog.isShowing()){ wsDialog.dismiss(); }
+						if (hasWsRan == true) {
+								wsThread.interrupt();
+								hasWsInterrupted = true;
+						}
+						if (productList != null && !productList.isEmpty()) {
+		            		if (productList.get(0).getProductId() == 0) {
+		            			//wsDialog.dismiss();
+		            			if(wsDialog != null && wsDialog.isShowing()){ wsDialog.dismiss(); }
+		            			if (hasWsRan == true) {
+		        						wsThread.interrupt();
+		        						hasWsInterrupted = true;
+		        				}
+		            			Toast.makeText(ActMain.this, "The device only scanned a partial barcode, please try again", Toast.LENGTH_LONG).show();
+		            		}
+		            		else {
+		            			//wsDialog.dismiss();
+		            			if(wsDialog != null && wsDialog.isShowing()){ wsDialog.dismiss(); }
+		            			if (hasWsRan == true) {
+		        						wsThread.interrupt();
+		        						hasWsInterrupted = true;
+		        				}
+		            			
+		            			Intent i = new Intent(ActMain.this, ActDetails.class);
+		    					//i.putExtra("SCANDATA_EXTRA", barcode);
+		            			i.putExtra("SCANDATA_EXTRA", eanCode);
+		    					i.putExtra("TIME_EXTRA", startTime);
+		    					i.putExtra("ACTION_EXTRA", ACTION_GETSINGLEPRODUCT);
+		    					i.putExtra("PRODUCT_EXTRA", productList.get(0));
+		    					startActivity(i);
+		            		}
 						}
 						else {
-							Log.d("afterTextChanged - Runnable", "actionString appears to be null");
+							//wsDialog.dismiss();
+							if(wsDialog != null && wsDialog.isShowing() == true){ wsDialog.dismiss(); } //delete me
+							if (hasWsRan == true) {
+									wsThread.interrupt();
+									hasWsInterrupted = true;
+							}
+							if (hasWsRan == false && wsRunCount == 1) {
+								Toast.makeText(ActMain.this, "Debug - Normal Barcode scan Loop", Toast.LENGTH_LONG).show();
+							}
+							else {
+								Toast.makeText(ActMain.this, "The product scanned does not exist in our database", Toast.LENGTH_LONG).show();
+							}
 						}
-					}	
-				};
-				Thread wsThread = new Thread(runnable);
-				//if (wsThread.isAlive() == false) {
-					if (hasWsRan == false && wsRunCount == 0) {
-						wsThread.setName("wsThread");
-						wsThread.start();
-						wsRunCount ++;
+					} else {
+						//wsDialog.dismiss();
+						if(wsDialog != null && wsDialog.isShowing() == true){ wsDialog.dismiss(); }
+						Toast.makeText(ActMain.this, "Scan was not performed successfully", Toast.LENGTH_LONG).show();
 					}
-					
-				//}
-				
-				//scanSuccess = false; //reset for the next scan
-				if(wsDialog != null && wsDialog.isShowing()){ wsDialog.dismiss(); }
-				//if (wsThread.isAlive() == true) { 
-					if (hasWsRan == true) {
-						wsThread.interrupt();
-					}
-				//}
-				if (productList != null && !productList.isEmpty()) {
-            		if (productList.get(0).getProductId() == 0) {
-            			//wsDialog.dismiss();
-            			if(wsDialog != null && wsDialog.isShowing()){ wsDialog.dismiss(); }
-            			//if (wsThread.isAlive() == true) { 
-        					if (hasWsRan == true) {
-        						wsThread.interrupt();
-        					}
-        				//}
-            			Toast.makeText(ActMain.this, "The device only scanned a partial barcode, please try again", Toast.LENGTH_LONG).show();
-            		}
-            		else {
-            			//if (wsThread.isAlive()) {
-            			//	wsThread.interrupt();
-            			//}
-            			//wsDialog.dismiss();
-            			if(wsDialog != null && wsDialog.isShowing()){ wsDialog.dismiss(); }
-            			//if (wsThread.isAlive() == true) { 
-        					if (hasWsRan == true) {
-        						wsThread.interrupt();
-        					}
-        				//}
-            			Intent i = new Intent(ActMain.this, ActDetails.class);
-    					i.putExtra("SCANDATA_EXTRA", barcode);
-    					i.putExtra("TIME_EXTRA", startTime);
-    					i.putExtra("ACTION_EXTRA", ACTION_GETSINGLEPRODUCT);
-    					i.putExtra("PRODUCT_EXTRA", productList.get(0));
-    					startActivity(i);
-            		}
+					hasWsRan = false;
+					wsRunCount = 0;
 				}
-				else {
-					//wsDialog.dismiss();
-					//if (wsThread.isAlive() == true) { 
-						if (hasWsRan == true) {
-							wsThread.interrupt();
-						}
-					//}
-					Toast.makeText(ActMain.this, "The product scanned does not exist in our database", Toast.LENGTH_LONG).show();
-				}
-			} else {
-				//wsDialog.dismiss();
-				if(wsDialog != null && wsDialog.isShowing() == true){ wsDialog.dismiss(); }
-				Toast.makeText(ActMain.this, "Scan was not performed successfully", Toast.LENGTH_LONG).show();
 			}
-			hasWsRan = false;
-			wsRunCount = 0;
+			else
+			{
+				// Go with AsyncTask instead
+				if (s != null && !s.toString().equalsIgnoreCase("")) {
+					int acceptable[] = {8,12,13,14};
+					String eanCode = s.toString().trim();
+					if (eanCode.length() > 0 && !(Arrays.binarySearch(acceptable, eanCode.length()) == -1)) {
+						actionString = new String[] {String.format("%s", ACTION_GETSINGLEPRODUCT), eanCode};
+						ArrayList<String> inputList = new ArrayList<String>();
+						inputList.add(String.format("%s", ACTION_GETSINGLEPRODUCT));
+						inputList.add(eanCode);
+						
+						//WebServiceTask wsTask = new WebServiceTask();
+						wsTask = new WebServiceTask();
+						wsTask.execute(actionString);
+					}
+				}
+			}
 		}
     }
     
@@ -636,7 +693,8 @@ public class ActMain extends Activity {
         @Override  
         public void onClick(View v) {  
             if (v == close) {
-            	ActMain.this.finish();
+            	//ActMain.this.finish();
+            	killApp(true);
             	}
             else if(v == scan)
             {
@@ -666,6 +724,23 @@ public class ActMain extends Activity {
             	mReception.setText("");
             }*/
         }  
+    }
+    
+    public static void killApp(boolean killSafely) {
+        if (killSafely) {
+            /*
+             * Alternatively the process that runs the virtual machine could be
+             * abruptly killed. This is the quickest way to remove the app from
+             * the device but it could cause problems since resources will not
+             * be finalized first. For example, all threads running under the
+             * process will be abruptly killed when the process is abruptly
+             * killed. If one of those threads was making multiple related
+             * changes to the database, then it may have committed some of those
+             * changes but not all of those changes when it was abruptly killed.
+             */
+            android.os.Process.killProcess(android.os.Process.myPid());
+        }
+
     }
     
     @Override
@@ -841,6 +916,203 @@ public class ActMain extends Activity {
 				}
 			}
 		}
+    }
+
+    private class WebServiceTask extends AsyncTask<String[], Void, List<Product>>{
+    	protected ProgressDialog xDialog;
+    	
+		@Override
+		protected List<Product> doInBackground(String[]... argument) {
+			productList = new ArrayList<Product>();
+        	//String act =  argument[0].get(0).toString().trim(); //argument[0].toString().trim();
+    		//int thisAction = Integer.parseInt(act.trim());
+    		//String thisParam = String.format("%s", (argument[0].get(1).trim() == null ? "" : argument[0].get(1).trim()));
+			String act = argument[0][0].toString().trim();
+    		int thisAction = Integer.parseInt(act.trim());
+    		String thisParam = String.format("%s", (argument[0][1]==null?"":argument[0][1]));
+    		//int recordsFound = 0; //something went wrong, if this value doesn't change
+    		//int taskLoad = 0;
+    		XmlPullParser receivedData = null;
+    		
+    		if (thisAction == 2 || thisAction == 3) {
+    			
+    			// **************************	BEGIN	tryDownloadingData	************************************
+    			//String serviceUrl = "http://192.168.0.100:8080/warehouse.support/api/v1/product";
+    			//String serviceUrl = "http://192.168.10.248:9080/com.lebel.restsample/api/v1/product";
+    			String serviceUrl = "http://192.168.10.248:9080/cwarehouse.support/api/v1/product";
+    			final String thisLogTag = "tryDownloadingData";
+    			
+    			switch (thisAction) {
+    			case 3:
+    				//serviceUrl += "/getProductByIdInXML/" + thisParam;
+    				//serviceUrl = serviceUrl + "/getProductByIdInXML/" + thisParam;
+    				serviceUrl = serviceUrl + "/getproductbybarcodeinxml/" + thisParam;
+    				break;
+    			case 2:
+    				serviceUrl += "/gettop20inxml";
+    				break;
+    			}
+    			
+    			try {
+    				URL xmlUrl = new URL(serviceUrl.trim());
+    				XmlPullParserFactory ppfactory = XmlPullParserFactory.newInstance();
+    		        ppfactory.setNamespaceAware(true);
+    		        receivedData = ppfactory.newPullParser();
+    				URLConnection conn = xmlUrl.openConnection();
+
+    	            DocumentBuilderFactory dfactory = DocumentBuilderFactory.newInstance();
+    	            DocumentBuilder builder = dfactory.newDocumentBuilder();
+    	            Document doc = builder.parse(conn.getInputStream());
+    	            
+    	            TransformerFactory tf = TransformerFactory.newInstance();
+    	            Transformer transformer = tf.newTransformer();
+    	            transformer.setOutputProperty(OutputKeys.OMIT_XML_DECLARATION, "yes");
+    	            StringWriter writer = new StringWriter();
+    	            transformer.transform(new DOMSource(doc), new StreamResult(writer));
+    	            String xmlString = writer.getBuffer().toString().replaceAll("\n|\r", "");
+    	            
+    	            receivedData.setInput(new StringReader(xmlString));
+    	            
+    	            
+    	            Element docEl = doc.getDocumentElement();
+    	            NodeList nList = docEl.getChildNodes();
+    	            
+    	            if (nList != null && nList.getLength() > 0) {
+    	                
+    	            	//################	Loop to get total item	######################
+    	            	for (int i = 0; i < nList.getLength(); i++) {
+    	                	if (nList.item(i).getNodeType() == Node.ELEMENT_NODE) {
+    	                        Element el = (Element) nList.item(i);
+    	                        if (el.getNodeName().equalsIgnoreCase("Product")) {
+    	                        	//recordsFound ++;
+    	                        }
+    	                	}
+    	                }
+    	            	
+    	            	////################	Loop to process data	######################
+    	            	for (int i = 0; i < nList.getLength(); i++) {
+    	                	if (nList.item(i).getNodeType() == Node.ELEMENT_NODE) {
+    	                        Element el = (Element) nList.item(i);
+    	                        if (el.getNodeName().equalsIgnoreCase("Product")) {
+    	                        	Product prod = new Product();
+    	                        	
+    	                        	//Expected fields in the XML records
+    	                    		String productId = el.getElementsByTagName("ProductId").item(0).getTextContent();
+    	                    		String suppCode = el.getElementsByTagName("SuppCode").item(0).getTextContent();
+    	                    		String supplierCat = el.getElementsByTagName("SupplierCat").item(0).getTextContent();
+    	                    		String format = el.getElementsByTagName("Format").item(0).getTextContent();
+    	                    		String artist = el.getElementsByTagName("Artist").item(0).getTextContent();
+    	                    		String title = el.getElementsByTagName("Title").item(0).getTextContent();
+    	                    		String shortDesc = el.getElementsByTagName("ShortDescription").item(0).getTextContent();
+    	                    		String barCode = el.getElementsByTagName("Barcode").item(0).getTextContent();
+    	                    		String onHand = el.getElementsByTagName("OnHand").item(0).getTextContent();
+    	                    		String dealerPrice = el.getElementsByTagName("DealerPrice").item(0).getTextContent();
+    	                    		String binNo = el.getElementsByTagName("BinNo").item(0).getTextContent();
+    	                    		String price1 = el.getElementsByTagName("Price1").item(0).getTextContent();
+    	                    		String outOfStock = el.getElementsByTagName("OutOfStock").item(0).getTextContent();
+    	                            
+    	                            prod.setProductId(Integer.parseInt(productId.trim()));
+    	        					prod.setSuppCode(suppCode);
+    	        					prod.setSupplierCat(supplierCat);
+    	        					prod.setFormat(format);
+    	        					prod.setArtist(artist);
+    	        					prod.setTitle(title);
+    	        					prod.setShortDescription(shortDesc);
+    	        					prod.setBarcode(barCode);
+    	        					prod.setOnHand(Integer.parseInt(onHand.trim()));
+    	        					prod.setDealerPrice(Float.valueOf(dealerPrice.trim()));
+    	        					prod.setBinNo(binNo);
+    	        					prod.setPrice1(Float.valueOf(price1.trim()));
+    	        					prod.setOutOfStock(Integer.parseInt(outOfStock.trim()));
+    	        					
+    	        					productList.add(prod);
+    	        					//ActMain.this.productList.add(prod);
+    	        					//taskLoad ++;
+    	                        }
+    	                    }
+    	                }
+    	            }
+    	            
+    	            
+    			} catch(XmlPullParserException e) {
+    				Log.e(thisLogTag, "XmlPullParserException while attemmpting to download XML", e);
+    			} catch(IOException ex) {
+    				Log.e(thisLogTag, "IO Exception - Failed  downloading XML", ex);
+    			} catch (SAXException e) {
+    				Log.e(thisLogTag, "SAXException while attemmpting to download XML", e);
+    				e.printStackTrace();
+    			} catch (ParserConfigurationException e) {
+    				Log.e(thisLogTag, "ParserConfigurationException while attemmpting to download XML", e);
+    				e.printStackTrace();
+    			} catch (TransformerConfigurationException e) {
+    				Log.e(thisLogTag, "TransformerConfigurationException while attemmpting to download XML", e);
+    				e.printStackTrace();
+    			} catch (TransformerException e) {
+    				Log.e(thisLogTag, "TransformerException while attemmpting to download XML", e);
+    				e.printStackTrace();
+    			} catch (Exception ex) {
+    				Log.e(thisLogTag, "TransformerException while attemmpting to download XML", ex);
+    				ex.printStackTrace();
+    			}
+    		}
+    		return productList;
+		}
+
+		@Override
+		protected void onPostExecute(List<Product> result) {
+			if(xDialog != null && xDialog.isShowing() == true){
+				xDialog.dismiss();
+			}
+			
+			if (productList != null && !productList.isEmpty()) {
+        		if (productList.get(0).getProductId() == 0) {
+        			if(xDialog != null && xDialog.isShowing()){ xDialog.dismiss(); }
+        			
+        			Toast.makeText(ActMain.this, "The device only scanned a partial barcode, please try again", Toast.LENGTH_LONG).show();
+        		}
+        		else {
+        			if(xDialog != null && xDialog.isShowing()){ xDialog.dismiss(); }
+        			
+        			Intent i = new Intent(ActMain.this, ActDetails.class);
+        			i.putExtra("SCANDATA_EXTRA", productList.get(0).getBarcode());
+					i.putExtra("TIME_EXTRA", startTime);
+					i.putExtra("ACTION_EXTRA", ACTION_GETSINGLEPRODUCT);
+					i.putExtra("PRODUCT_EXTRA", productList.get(0));
+					//startActivity(i);
+					startActivityForResult(i, 1);
+        		}
+			}
+			else {
+				if(wsDialog != null && wsDialog.isShowing() == true){ wsDialog.dismiss(); }
+					Toast.makeText(ActMain.this, "The product scanned does not exist in our database", Toast.LENGTH_LONG).show();
+			}
+		}
+
+		@Override
+		protected void onPreExecute() {
+			xDialog = new ProgressDialog(ActMain.this);
+            CharSequence message = "Working hard...contacting webservice...";
+            CharSequence title = "Please Wait";
+            xDialog.setCancelable(true);
+            xDialog.setCanceledOnTouchOutside(false);
+            xDialog.setMessage(message);
+            xDialog.setTitle(title);
+            xDialog.setProgressStyle(ProgressDialog.STYLE_SPINNER);
+            xDialog.show();
+		}
+
+		
+		@Override
+		protected void onCancelled() {
+			mReception.setText("");
+		}
+
+		
+		@Override
+		protected void onCancelled(List<Product> result) {
+			mReception.setText("");
+		}
+    	
     }
 
 }
